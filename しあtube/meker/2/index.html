@@ -109,7 +109,7 @@
         const safeJs = sanitizeScriptContent(fetched[url]);
         const hasModule = /type\s*=\s*["']module["']/i.test(before + " " + after);
         const typeAttr = hasModule ? ' type="module"' : '';
-        return `<script${typeAttr}>\n/* inlined from: ${url} */\n${safeJs}\n</script>`;
+        return "<scr" + "ipt" + typeAttr + ">\n/* inlined from: " + url + " */\n" + safeJs + "\n</scr" + "ipt>";
       }
     );
 
