@@ -1,210 +1,148 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>jsDelivr をインライン化するツール</title>
+  <meta charset="utf-8">
+  <title>CDN Inline Tool</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:18px;background:#f6f7fb;color:#111}
-    h1{font-size:18px;margin:0 0 8px}
-    p.note{margin:4px 0 12px;color:#444}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    textarea{width:100%;height:320px;padding:10px;font-family:monospace;font-size:13px;box-sizing:border-box;resize:vertical}
-    .controls{display:flex;gap:8px;align-items:center}
-    button{padding:8px 12px;border-radius:6px;border:1px solid #ccc;background:white;cursor:pointer}
-    button.primary{background:#0b78ff;color:#fff;border-color:#065ed6}
-    .log{white-space:pre-wrap;background:#fff;padding:8px;border-radius:6px;border:1px solid #e3e6ec;min-height:40px}
-    footer{margin-top:12px;color:#666;font-size:13px}
-    @media(max-width:900px){.grid{grid-template-columns:1fr;}}
+    textarea { width:48%; height:300px; }
+    pre { white-space: pre-wrap; background:#eee; padding:10px; height:200px; overflow:auto; }
+    button { margin:2px; }
   </style>
 </head>
 <body>
-  <h1>jsDelivr の JS/CSS をインライン化する</h1>
-  <p class="note">元の HTML を左のテキストエリアに貼って「CDN をインライン化」してください。`https://cdn.jsdelivr.net/gh/.../index-xxxxx.js` と `...index-xxxxx.css` を自動で取得して直書きします。</p>
 
-  <div class="grid">
-    <div>
-      <label><strong>元の HTML（貼り付け）</strong></label>
-      <textarea id="inputHtml" placeholder="ここに元の HTML を貼り付けます..."></textarea>
-      <div style="margin-top:8px" class="controls">
-        <button id="inlineBtn" class="primary">CDN をインライン化</button>
-        <button id="clearBtn">クリア</button>
-        <button id="exampleBtn">サンプル挿入</button>
-      </div>
-    </div>
+<textarea id="inputHtml" placeholder="ここにHTMLを入力"></textarea>
+<textarea id="outputHtml" placeholder="ここに変換後が出力"></textarea>
+<br>
 
-    <div>
-      <label><strong>変換後の HTML（結果）</strong></label>
-      <textarea id="outputHtml" placeholder="ここに変換後の HTML が表示されます..." readonly></textarea>
-      <div style="margin-top:8px" class="controls">
-        <button id="downloadBtn">ダウンロード（index-inline.html）</button>
-        <button id="copyBtn">コピー</button>
-      </div>
-    </div>
-  </div>
+<button id="inlineBtn">インライン化</button>
+<button id="clearBtn">クリア</button>
+<button id="copyBtn">コピー</button>
+<button id="downloadBtn">ダウンロード</button>
 
-  <h2 style="margin-top:18px">ログ</h2>
-  <div id="log" class="log">準備完了。</div>
+<pre id="log"></pre>
 
-  <footer>
-    注意: fetch による取得はブラウザの CORS 制約に依存します。jsDelivr は通常 CORS を許可していますが、稀に失敗する場合があります。
-  </footer>
+<script>
+(function(){
+  const input = document.getElementById('inputHtml');
+  const output = document.getElementById('outputHtml');
+  const logEl = document.getElementById('log');
 
-  <script>
-  (function(){
-    const input = document.getElementById('inputHtml');
-    const output = document.getElementById('outputHtml');
-    const logEl = document.getElementById('log');
-    const inlineBtn = document.getElementById('inlineBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
-    const copyBtn = document.getElementById('copyBtn');
-    const exampleBtn = document.getElementById('exampleBtn');
+  function log(...msg){
+    logEl.textContent = msg.join(' ') + "\n" + logEl.textContent;
+  }
 
-    function log(...msgs){
-      logEl.textContent = msgs.join(' ') + '\\n' + logEl.textContent;
+  const CDN_REGEX =
+    /https?:\/\/cdn\.jsdelivr\.net\/gh\/[^"'>\s]+\/assets\/index-[^"'>\s]+\.(js|css)/ig;
+
+  function findUrls(html){
+    const list = [];
+    let m;
+    while((m = CDN_REGEX.exec(html)) !== null){
+      list.push(m[0]);
+    }
+    return Array.from(new Set(list));
+  }
+
+  async function fetchText(url){
+    const r = await fetch(url, {credentials:"omit"});
+    if(!r.ok) throw new Error(r.status + " " + r.statusText);
+    return await r.text();
+  }
+
+  function sanitizeScriptContent(js){
+    return js.replace(/<\/script>/gi, '<\\/scr' + 'ipt>');
+  }
+
+  function sanitizeCssContent(css){
+    return css.replace(/<\/style>/gi, '<\\/st' + 'yle>');
+  }
+
+  document.getElementById('inlineBtn').addEventListener('click', async ()=>{
+    const src = input.value;
+    if(!src.trim()){
+      log("入力が空です");
+      return;
+    }
+    output.value = "";
+
+    const urls = findUrls(src);
+    if(urls.length === 0){
+      log("jsDelivr の index-*.js / *.css が見つかりません");
+      output.value = src;
+      return;
     }
 
-    // 正規表現: jsdelivr の index-... .js or .css を拾う (柔軟)
-    const CDN_REGEX = /https?:\/\/cdn\.jsdelivr\.net\/gh\/[^"'>\\s]+\/assets\/index-[^"'>\\s]+\\.(js|css)/ig;
+    log("検出:", urls.join(", "));
 
-    // 同期的に簡単な HTML エスケープ（表示用）
-    function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    const fetched = {};
 
-    // 元HTMLから該当URLを集める
-    function findCdnUrls(html){
-      const set = new Set();
-      let m;
-      while((m = CDN_REGEX.exec(html)) !== null){
-        set.add(m[0]);
-      }
-      return Array.from(set);
-    }
-
-    async function fetchText(url){
-      const r = await fetch(url, {credentials: 'omit'}); // crossorigin assets usually allow this
-      if(!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
-      return await r.text();
-    }
-
-    // 変換のメインルーチン
-    inlineBtn.addEventListener('click', async () => {
-      const srcHtml = input.value;
-      if(!srcHtml.trim()){
-        log('元HTMLが空です。貼り付けてください。');
-        return;
-      }
-      log('処理開始...');
-      output.value = '';
-      const urls = findCdnUrls(srcHtml);
-      if(urls.length === 0){
-        log('該当する jsDelivr の index-*.js / index-*.css が見つかりませんでした。');
-        // そのまま出力
-        output.value = srcHtml;
-        return;
-      }
-      log('検出された URL:', urls.join(', '));
-
-      const fetched = {};
-      // fetch する（並列）
-      await Promise.all(urls.map(async (u) => {
-        try{
-          log('fetch:', u);
-          const text = await fetchText(u);
-          fetched[u] = text;
-          log('取得成功:', u);
-        }catch(err){
-          fetched[u] = null;
-          log('取得失敗:', u, err.message);
-        }
-      }));
-
-      // 置換: <link ... href="URL"> -> <style>...</style>
-      // 置換: <script ... src="URL"></script> -> <script type="module">...</script>
-      let out = srcHtml;
-
-      // CSS の置換（link タグ）
-      out = out.replace(/<link\b[^>]*href=(["'])(https?:\/\/cdn\.jsdelivr\.net\/gh\/[^"'>\\s]+\/assets\/index-[^"'>\\s]+\.css)\1[^>]*>/ig,
-        (match, q, url) => {
-          const txt = fetched[url];
-          if(txt == null){
-            log('CSS を取得できなかったため外部参照のままにします:', url);
-            return match;
-          }
-          // コメントで元の URL を残す
-          return '<style>/* inlined from: ' + url + ' */\\n' + txt + '\\n</style>';
-        });
-
-      // JS の置換（script タグ）
-      out = out.replace(/<script\b([^>]*)\bsrc=(["'])(https?:\/\/cdn\.jsdelivr\.net\/gh\/[^"'>\\s]+\/assets\/index-[^"'>\\s]+\.js)\2([^>]*)>\s*<\/script>/ig,
-        (match, beforeAttr, q, url, afterAttr) => {
-          const txt = fetched[url];
-          if(txt == null){
-            log('JS を取得できなかったため外部参照のままにします:', url);
-            return match;
-          }
-          // script タグ内へそのまま挿入。type="module" が必要なら付与する。
-          // 元のタグに type="module" が無ければ付けない（ただし多くは type=module）
-          let hasTypeModule = /type\s*=\s*["']module["']/i.test(beforeAttr + ' ' + afterAttr);
-          const typeAttr = hasTypeModule ? ' type="module"' : '';
-          return '<script' + typeAttr + '>\n/* inlined from: ' + url + ' */\n' + txt + '\n</script>';
-        });
-
-      output.value = out;
-      log('変換完了。出力領域に表示しました。ダウンロードも可。');
-    });
-
-    clearBtn.addEventListener('click', () => {
-      input.value = '';
-      output.value = '';
-      log('クリアしました。');
-    });
-
-    copyBtn.addEventListener('click', async () => {
+    await Promise.all(urls.map(async url=>{
       try{
-        await navigator.clipboard.writeText(output.value);
-        log('結果をクリップボードにコピーしました。');
+        log("fetch:", url);
+        const txt = await fetchText(url);
+        fetched[url] = txt;
+        log("取得成功:", url);
       }catch(e){
-        log('コピーに失敗しました:', e.message);
+        log("取得失敗:", url, e.message);
+        fetched[url] = null;
       }
-    });
+    }));
 
-    downloadBtn.addEventListener('click', () => {
-      const blob = new Blob([output.value || ''], {type:'text/html;charset=utf-8'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'index-inline.html';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      log('ダウンロードを開始しました。');
-    });
+    let out = src;
 
-    exampleBtn.addEventListener('click', () => {
-      input.value = `
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <script type="module" crossorigin src="https://cdn.jsdelivr.net/gh/ajgpw/youtube@main/client/dist/assets/index-abcdef12.js"></script>
-    <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/ajgpw/youtube@main/client/dist/assets/index-abcdef12.css">
-  </head>
-  <body>
-    <div id="app">ここにアプリ</div>
-  </body>
-</html>`.trim();
-      log('サンプルを挿入しました。');
-    });
+    // ------- CSS -------
+    out = out.replace(
+      /<link\b[^>]*href=(["'])(https?:\/\/cdn\.jsdelivr\.net\/gh\/[^"'>\s]+\/assets\/index-[^"'>\s]+\.css)\1[^>]*>/ig,
+      (match, q, url)=>{
+        if(fetched[url] == null) return match;
+        const safeCss = sanitizeCssContent(fetched[url]);
+        return `<style>/* inlined from: ${url} */\n${safeCss}\n</style>`;
+      }
+    );
 
-    // ユーザが外部URLを貼ったときの簡易検出（オプション）
-    input.addEventListener('input', () => {
-      const urls = findCdnUrls(input.value);
-      if(urls.length) log('検出: ' + urls.length + ' 個の jsDelivr URL');
-    });
+    // ------- JS -------
+    out = out.replace(
+      /<script\b([^>]*)\bsrc=(["'])(https?:\/\/cdn\.jsdelivr\.net\/gh\/[^"'>\s]+\/assets\/index-[^"'>\s]+\.js)\2([^>]*)>\s*<\/script>/ig,
+      (match, before, q, url, after)=>{
+        if(fetched[url] == null) return match;
+        const safeJs = sanitizeScriptContent(fetched[url]);
+        const hasModule = /type\s*=\s*["']module["']/i.test(before + " " + after);
+        const typeAttr = hasModule ? ' type="module"' : '';
+        return `<script${typeAttr}>\n/* inlined from: ${url} */\n${safeJs}\n</script>`;
+      }
+    );
 
-  })();
-  </script>
+    output.value = out;
+    log("変換完了");
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', ()=>{
+    input.value = "";
+    output.value = "";
+    log("クリアしました");
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', async ()=>{
+    await navigator.clipboard.writeText(output.value);
+    log("コピーしました");
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', ()=>{
+    const blob = new Blob([output.value], {type:"text/html"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "inline.html";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    log("ダウンロード開始");
+  });
+
+})();
+</script>
+
 </body>
 </html>
