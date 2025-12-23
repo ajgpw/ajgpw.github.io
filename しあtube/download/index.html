@@ -2,32 +2,43 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>m3u8 Downloader (Browser)</title>
+  <title>m3u8 Downloader (ffmpeg.wasm)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
-      background:#0f172a;
-      color:#e5e7eb;
-      font-family:system-ui,sans-serif;
-      padding:20px;
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: system-ui, sans-serif;
+      padding: 20px;
     }
-    input,button {
-      width:100%;
-      padding:10px;
-      margin-top:10px;
-      font-size:16px;
+    h2 {
+      margin-bottom: 10px;
+    }
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 16px;
+      box-sizing: border-box;
     }
     button {
-      background:#3b82f6;
-      border:none;
-      color:white;
+      background: #3b82f6;
+      border: none;
+      color: white;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #475569;
+      cursor: not-allowed;
     }
     pre {
-      background:#020617;
-      padding:10px;
-      height:220px;
-      overflow:auto;
-      margin-top:10px;
-      font-size:13px;
+      background: #020617;
+      padding: 10px;
+      margin-top: 10px;
+      height: 220px;
+      overflow: auto;
+      font-size: 13px;
+      white-space: pre-wrap;
     }
   </style>
 </head>
@@ -35,18 +46,18 @@
 
 <h2>m3u8 Downloader（非ライブ / DRMなし）</h2>
 
-<input id="url" placeholder="https://example.com/video.m3u8">
+<input id="m3u8" placeholder="https://example.com/video.m3u8">
 <button id="start">Download</button>
 
 <pre id="log"></pre>
 
-<!-- ✅ UMD版 ffmpeg.wasm -->
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
+<!-- ffmpeg.wasm UMD（同一オリジン） -->
+<script src="./ffmpeg/ffmpeg.js"></script>
 
 <script>
   const logEl = document.getElementById("log");
-  const log = (m) => {
-    logEl.textContent += m + "\n";
+  const log = (msg) => {
+    logEl.textContent += msg + "\n";
     logEl.scrollTop = logEl.scrollHeight;
   };
 
@@ -54,13 +65,21 @@
   const ffmpeg = new FFmpeg();
 
   document.getElementById("start").onclick = async () => {
-    const url = document.getElementById("url").value.trim();
-    if (!url) return alert("m3u8 URLを入力して");
+    const url = document.getElementById("m3u8").value.trim();
+    if (!url) {
+      alert("m3u8 URLを入力してください");
+      return;
+    }
+
+    const btn = document.getElementById("start");
+    btn.disabled = true;
 
     try {
       log("ffmpeg 読み込み中...");
+
       await ffmpeg.load({
-        coreURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js"
+        coreURL: "./ffmpeg/ffmpeg-core.js",
+        wasmURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm"
       });
 
       log("変換開始...");
@@ -70,10 +89,10 @@
         "output.mp4"
       ]);
 
-      log("読み出し中...");
+      log("ファイル取得中...");
       const data = await ffmpeg.readFile("output.mp4");
 
-      const blob = new Blob([data.buffer], { type:"video/mp4" });
+      const blob = new Blob([data.buffer], { type: "video/mp4" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "video.mp4";
@@ -83,6 +102,8 @@
     } catch (e) {
       log("エラー: " + e.message);
       console.error(e);
+    } finally {
+      btn.disabled = false;
     }
   };
 </script>
