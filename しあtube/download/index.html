@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ブラウザ完結 m3u8変換</title>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
+        #logs { background: #f0f0f0; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ccc; font-family: monospace; font-size: 0.8rem; margin-top: 10px;}
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        button:disabled { background-color: #ccc; }
+    </style>
+</head>
+<body>
+    <h1>ブラウザ完結 m3u8 → mp4</h1>
+    <p>※CORS許可されているURL、または自分のサーバー上の動画のみ動作します。</p>
+    
+    <input type="text" id="urlInput" placeholder="https://example.com/video.m3u8" style="width: 100%; padding: 8px;">
+    <br><br>
+    <button id="convertBtn">変換・ダウンロード開始</button>
+    
+    <div id="logs">ログがここに表示されます...</div>
+
+    <script>
+        const { FFmpeg } = FFmpegWASM;
+        const { fetchFile } = FFmpegUtil;
+        let ffmpeg = null;
+
+        const log = (message) => {
+            const logsDiv = document.getElementById('logs');
+            logsDiv.innerHTML += `<div>${message}</div>`;
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        };
+
+        const loadFFmpeg = async () => {
+            ffmpeg = new FFmpeg();
+            ffmpeg.on('log', ({ message }) => log(message));
+            
+            log("FFmpegをロード中... (これには時間がかかります)");
+            // マルチスレッド処理のためcoreURLを指定
+            await ffmpeg.load({
+                coreURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
+            });
+            log("FFmpegロード完了！");
+        };
+
+        const convert = async () => {
+            const url = document.getElementById('urlInput').value;
+            if (!url) return alert("URLを入力してください");
+            
+            const btn = document.getElementById('convertBtn');
+            btn.disabled = true;
+
+            try {
+                if (!ffmpeg) await loadFFmpeg();
+
+                log("動画データの取得を開始 (CORSエラーが出る可能性があります)...");
+                
+                // m3u8ファイルとセグメントを取得して仮想ファイルシステムに書き込む必要があるが、
+                // FFmpeg.wasm単体で外部m3u8を直接叩くのは難易度が高い。
+                // ここでは「コマンドで直接URLを指定する」方式をとるが、
+                // これが成功するには配信サーバー側のCORS許可が必須。
+                
+                await ffmpeg.exec(['-i', url, '-c', 'copy', 'output.mp4']);
+                
+                log("変換完了！データを読み込んでいます...");
+                const data = await ffmpeg.readFile('output.mp4');
+
+                log("ダウンロードリンクを作成中...");
+                const blob = new Blob([data.buffer], { type: 'video/mp4' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'video.mp4';
+                a.click();
+                
+                log("完了しました。");
+            } catch (e) {
+                console.error(e);
+                log(`エラー発生: ${e.message}`);
+                log("※ 'SharedArrayBuffer' エラーの場合、サーバー設定が必要です。");
+                log("※ 'Network Error' の場合、CORSでブロックされています。");
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        document.getElementById('convertBtn').addEventListener('click', convert);
+    </script>
+</body>
+</html>
