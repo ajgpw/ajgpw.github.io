@@ -27,13 +27,13 @@
       // CSSを置換
       html = html.replace(
         /<link([^>]+)href="\.\/*assets\/(index-[^"]+\.css)"([^>]*)>/g,
-        `<link$1href="https://cdn.jsdelivr.net/gh/ajgpw/youtube@main/client/dist/assets/$2"$3>`
+        `<link$1href="https://cdn.jsdelivr.net/gh/ajgpw/siatube@main/client/dist/assets/$2"$3>`
       );
 
       // JSを置換
       html = html.replace(
         /<script([^>]+)src="\.\/*assets\/(index-[^"]+\.js)"([^>]*)><\/script>/g,
-        `<script$1src="https://cdn.jsdelivr.net/gh/ajgpw/youtube@main/client/dist/assets/$2"$3></scr` + `ipt>`
+        `<script$1src="https://cdn.jsdelivr.net/gh/ajgpw/siatube@main/client/dist/assets/$2"$3></scr` + `ipt>`
       );
 
       return html;
